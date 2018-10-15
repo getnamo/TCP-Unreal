@@ -1,0 +1,23 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1.0",
+	"FriendlyName": "TCPWrapper",
+	"Description": "Convenience TCP wrapper for Unreal Engine 4",
+	"Category": "Other",
+	"CreatedBy": "Getnamo",
+	"CreatedByURL": "http://getnamo.com",
+	"DocsURL": "https://github.com/getnamo/tcp-ue4",
+	"MarketplaceURL": "",
+	"SupportURL": "https://github.com/getnamo/tcp-ue4/issues",
+	"CanContainContent": true,
+	"IsBetaVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "TCPWrapper",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}
