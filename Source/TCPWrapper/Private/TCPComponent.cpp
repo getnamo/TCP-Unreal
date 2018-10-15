@@ -4,23 +4,28 @@
 #include "Runtime/Sockets/Public/SocketSubsystem.h"
 #include "Runtime/Engine/Classes/Kismet/KismetSystemLibrary.h"
 
+TFuture<void> RunLambdaOnBackGroundThread(TFunction< void()> InFunction)
+{
+	return Async(EAsyncExecution::Thread, InFunction);
+}
+
 UTCPComponent::UTCPComponent(const FObjectInitializer &init) : UActorComponent(init)
 {
-	bShouldAutoConnect = true;
+	bShouldAutoConnectAsClient = false;
 	bShouldAutoListen = true;
 	bReceiveDataOnGameThread = true;
 	bWantsInitializeComponent = true;
 	bAutoActivate = true;
-	SendIP = FString(TEXT("127.0.0.1"));
-	SendPort = 3001;
-	ReceivePort = 3002;
-	SendSocketName = FString(TEXT("ue4-dgram-send"));
-	ReceiveSocketName = FString(TEXT("ue4-dgram-receive"));
+	ClientIP = FString(TEXT("127.0.0.1"));
+	ClientPort = 3000;
+	ListenPort = 3001;
+	ClientSocketName = FString(TEXT("ue4-tcp-client"));
+	ListenSocketName = FString(TEXT("ue4-tcp-server"));
 
-	BufferSize = 2 * 1024 * 1024;	//default roughly 2mb
+	BufferMaxSize = 2 * 1024 * 1024;	//default roughly 2mb
 }
 
-void UTCPComponent::ConnectToSendSocket(const FString& InIP /*= TEXT("127.0.0.1")*/, const int32 InPort /*= 3000*/)
+void UTCPComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("127.0.0.1")*/, const int32 InPort /*= 3000*/)
 {
 	RemoteAdress = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateInternetAddr();
 	
@@ -34,18 +39,21 @@ void UTCPComponent::ConnectToSendSocket(const FString& InIP /*= TEXT("127.0.0.1"
 		return ;
 	}
 
-	/*SenderSocket = FTCPSocketBuilder(*SendSocketName).AsReusable().WithBroadcast();
-
-	//check(SenderSocket->GetSocketType() == SOCKTYPE_Datagram);
+	ClientSocket = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateSocket(NAME_Stream, ClientSocketName, false);
 
 	//Set Send Buffer Size
-	SenderSocket->SetSendBufferSize(BufferSize, BufferSize);
-	SenderSocket->SetReceiveBufferSize(BufferSize, BufferSize);
+	ClientSocket->SetSendBufferSize(BufferMaxSize, BufferMaxSize);
+	ClientSocket->SetReceiveBufferSize(BufferMaxSize, BufferMaxSize);
 
-	bool bDidConnect = SenderSocket->Connect(*RemoteAdress);*/
+	bool bDidConnect = ClientSocket->Connect(*RemoteAdress);
+
+	if (bDidConnect) 
+	{
+		OnClientConnectedToListenServer.Broadcast();
+	}
 }
 
-void UTCPComponent::StartReceiveSocketListening(const int32 InListenPort /*= 3002*/)
+void UTCPComponent::StartListenServer(const int32 InListenPort /*= 3002*/)
 {
 	FIPv4Address Addr;
 	FIPv4Address::Parse(TEXT("0.0.0.0"), Addr);
@@ -53,54 +61,84 @@ void UTCPComponent::StartReceiveSocketListening(const int32 InListenPort /*= 300
 	//Create Socket
 	FIPv4Endpoint Endpoint(Addr, InListenPort);
 
-	/*ReceiverSocket = FTCPSocketBuilder(*ReceiveSocketName)
+	ListenSocket = FTcpSocketBuilder(*ListenSocketName)
 		.AsNonBlocking()
 		.AsReusable()
 		.BoundToEndpoint(Endpoint)
-		.WithReceiveBufferSize(BufferSize);
+		.WithReceiveBufferSize(BufferMaxSize);
 
-	FTimespan ThreadWaitTime = FTimespan::FromMilliseconds(100);
-	FString ThreadName = FString::Printf(TEXT("TCP RECEIVER-%s"), *UKismetSystemLibrary::GetDisplayName(this));
-	/*TCPReceiver = new FTCPSocketReceiver(ReceiverSocket, ThreadWaitTime, *ThreadName);
+	ListenSocket->SetReceiveBufferSize(BufferMaxSize, BufferMaxSize);
+	ListenSocket->SetSendBufferSize(BufferMaxSize, BufferMaxSize);
 
-	TCPReceiver->OnDataReceived().BindUObject(this, &UTCPComponent::OnDataReceivedDelegate);
-	OnReceiveSocketStartedListening.Broadcast();
+	ListenSocket->Listen(8);
 
-	TCPReceiver->Start();*/
+	OnListenServerStarted.Broadcast();
+
+	//Start a lambda thread to handle data
+	RunLambdaOnBackGroundThread([&]()
+	{
+		uint32 BufferSize = 0;
+		TArray<uint8> ReceiveBuffer;
+		while (ListenSocket->HasPendingData(BufferSize) && bShouldContinueListening)
+		{
+			ReceiveBuffer.SetNumUninitialized(BufferSize);
+
+			int32 Read = 0;
+			ListenSocket->Recv(ReceiveBuffer.GetData(), ReceiveBuffer.Num(), Read);
+
+			if (bReceiveDataOnGameThread)
+			{
+				//Copy buffer so it's still valid on game thread
+				TArray<uint8> ReceiveBufferGT;
+				ReceiveBufferGT.Append(ReceiveBuffer);
+
+				//Pass the reference to be used on gamethread
+				AsyncTask(ENamedThreads::GameThread, [&, ReceiveBufferGT]()
+				{
+					OnReceivedBytes.Broadcast(ReceiveBufferGT);
+				});
+			}
+			else
+			{
+				OnReceivedBytes.Broadcast(ReceiveBuffer);
+			}
+		}
+
+		//Cleanup our receiver ?
+	});
 }
 
-void UTCPComponent::CloseReceiveSocket()
+void UTCPComponent::CloseListenServer()
 {
-	/*if (ReceiverSocket)
+	if (ListenSocket)
 	{
-		TCPReceiver->Stop();
-		delete TCPReceiver;
-		TCPReceiver = nullptr;
+		bShouldContinueListening = false;
+		ListenServerStoppedFuture.Get();
 
-		ReceiverSocket->Close();
-		ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(ReceiverSocket);
-		ReceiverSocket = nullptr;
+		ListenSocket->Close();
+		ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(ListenSocket);
+		ListenSocket = nullptr;
 
-		OnReceiveSocketStoppedListening.Broadcast();
-	}*/
+		OnListenServerStopped.Broadcast();
+	}
 }
 
-void UTCPComponent::CloseSendSocket()
+void UTCPComponent::CloseClientSocket()
 {
-	/*if (SenderSocket)
+	if (ClientSocket)
 	{
-		SenderSocket->Close();
-		ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(SenderSocket);
-		SenderSocket = nullptr;
-	}*/
+		ClientSocket->Close();
+		ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(ClientSocket);
+		ClientSocket = nullptr;
+	}
 }
 
 void UTCPComponent::Emit(const TArray<uint8>& Bytes)
 {
-	if (SenderSocket->GetConnectionState() == SCS_Connected)
+	if (ClientSocket->GetConnectionState() == SCS_Connected)
 	{
 		int32 BytesSent = 0;
-		SenderSocket->Send(Bytes.GetData(), Bytes.Num(), BytesSent);
+		ClientSocket->Send(Bytes.GetData(), Bytes.Num(), BytesSent);
 	}
 }
 
@@ -120,18 +158,18 @@ void UTCPComponent::BeginPlay()
 
 	if (bShouldAutoListen)
 	{
-		StartReceiveSocketListening(ReceivePort);
+		StartListenServer(ListenPort);
 	}
-	if (bShouldAutoConnect)
+	if (bShouldAutoConnectAsClient)
 	{
-		ConnectToSendSocket(SendIP, SendPort);
+		ConnectToSocketAsClient(ClientIP, ClientPort);
 	}
 }
 
 void UTCPComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	CloseSendSocket();
-	CloseReceiveSocket();
+	CloseClientSocket();
+	CloseListenServer();
 
 	Super::EndPlay(EndPlayReason);
 }
