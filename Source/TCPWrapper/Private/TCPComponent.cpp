@@ -53,7 +53,7 @@ void UTCPComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("127.0.
 	}
 }
 
-void UTCPComponent::StartListenServer(const int32 InListenPort /*= 3002*/)
+void UTCPComponent::StartListenServer(const int32 InListenPort)
 {
 	FIPv4Address Addr;
 	FIPv4Address::Parse(TEXT("0.0.0.0"), Addr);
@@ -102,6 +102,8 @@ void UTCPComponent::StartListenServer(const int32 InListenPort /*= 3002*/)
 			{
 				OnReceivedBytes.Broadcast(ReceiveBuffer);
 			}
+
+			//FPlatformProcess::Sleep();
 		}
 
 		//Cleanup our receiver ?
