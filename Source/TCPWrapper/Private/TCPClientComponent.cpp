@@ -19,6 +19,7 @@ UTCPClientComponent::UTCPClientComponent(const FObjectInitializer &init) : UActo
 	ConnectionIP = FString(TEXT("127.0.0.1"));
 	ConnectionPort = 3000;
 	ClientSocketName = FString(TEXT("ue4-tcp-client"));
+	ClientSocket = nullptr;
 
 	BufferMaxSize = 2 * 1024 * 1024;	//default roughly 2mb
 }
@@ -42,21 +43,30 @@ void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("
 	//Set Send Buffer Size
 	ClientSocket->SetSendBufferSize(BufferMaxSize, BufferMaxSize);
 	ClientSocket->SetReceiveBufferSize(BufferMaxSize, BufferMaxSize);
+	//ClientSocket->Listen(8);
 
-	bool bDidConnect = ClientSocket->Connect(*RemoteAdress);
+	bIsConnected = ClientSocket->Connect(*RemoteAdress);
 
-	if (bDidConnect) 
+	if (bIsConnected)
 	{
 		OnConnected.Broadcast();
 	}
+	bShouldContinueListening = true;
 
 	//Listen for data on our end
-	FTCPWrapperUtility::RunLambdaOnBackGroundThread([&]()
+	ClientConnectionFinishedFuture = FTCPWrapperUtility::RunLambdaOnBackGroundThread([&]()
 	{
 		uint32 BufferSize = 0;
 		TArray<uint8> ReceiveBuffer;
 		while (bShouldContinueListening)
 		{
+			bool bHasPendingConnection;
+			ClientSocket->HasPendingConnection(bHasPendingConnection);
+			if (bHasPendingConnection) 
+			{
+				UE_LOG(LogTemp, Log, TEXT("has waiting connection"));
+			}
+
 			if (ClientSocket->HasPendingData(BufferSize))
 			{
 				ReceiveBuffer.SetNumUninitialized(BufferSize);
@@ -70,7 +80,7 @@ void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("
 					TArray<uint8> ReceiveBufferGT;
 					ReceiveBufferGT.Append(ReceiveBuffer);
 
-					//Pass the reference to be used on gamethread
+					//Pass the reference to be used on game thread
 					AsyncTask(ENamedThreads::GameThread, [&, ReceiveBufferGT]()
 					{
 						OnReceivedBytes.Broadcast(ReceiveBufferGT);
@@ -91,6 +101,9 @@ void UTCPClientComponent::CloseSocket()
 {
 	if (ClientSocket)
 	{
+		bShouldContinueListening = false;
+		ClientConnectionFinishedFuture.Get();
+
 		ClientSocket->Close();
 		ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(ClientSocket);
 		ClientSocket = nullptr;
@@ -99,7 +112,7 @@ void UTCPClientComponent::CloseSocket()
 
 void UTCPClientComponent::Emit(const TArray<uint8>& Bytes)
 {
-	if (ClientSocket->GetConnectionState() == SCS_Connected)
+	if (ClientSocket && ClientSocket->GetConnectionState() == SCS_Connected)
 	{
 		int32 BytesSent = 0;
 		ClientSocket->Send(Bytes.GetData(), Bytes.Num(), BytesSent);
