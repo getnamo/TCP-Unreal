@@ -4,7 +4,7 @@ Convenience TCP socket wrapper for Unreal Engine 4.
 [![GitHub release](https://img.shields.io/github/release/getnamo/tcp-ue4.svg)](https://github.com/getnamo/udp-ue4/releases)
 [![Github All Releases](https://img.shields.io/github/downloads/getnamo/tcp-ue4/total.svg)](https://github.com/getnamo/udp-ue4/releases)
 
-Meant to be styled like https://github.com/getnamo/socketio-client-ue4 but for raw tcp sockets. Due to no dependencies this should work on a wider variety of platforms.
+Meant to be styled like https://github.com/getnamo/socketio-client-ue4 but for raw tcp sockets. Due to no dependencies this should work on a wider variety of platforms, but if your platform supports socket.io, I'd highly recommend using https://github.com/getnamo/socketio-client-ue4/releases instead.
 
 ## Quick Install & Setup
 
