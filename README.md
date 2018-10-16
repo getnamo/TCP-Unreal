@@ -1,5 +1,5 @@
 # tcp-ue4
-Convenience TCP socket wrapper for Unreal Engine 4.
+Convenience ActorComponent TCP socket wrapper for Unreal Engine 4.
 
 [![GitHub release](https://img.shields.io/github/release/getnamo/tcp-ue4.svg)](https://github.com/getnamo/udp-ue4/releases)
 [![Github All Releases](https://img.shields.io/github/downloads/getnamo/tcp-ue4/total.svg)](https://github.com/getnamo/udp-ue4/releases)
