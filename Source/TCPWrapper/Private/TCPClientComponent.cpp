@@ -12,7 +12,7 @@ TFuture<void> RunLambdaOnBackGroundThread(TFunction< void()> InFunction)
 
 UTCPClientComponent::UTCPClientComponent(const FObjectInitializer &init) : UActorComponent(init)
 {
-	bShouldAutoConnectOnBeginPlay = false;
+	bShouldAutoConnectOnBeginPlay = true;
 	bReceiveDataOnGameThread = true;
 	bWantsInitializeComponent = true;
 	bAutoActivate = true;
@@ -84,7 +84,7 @@ void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("
 				}
 			}
 			//sleep until there is data or 10 ticks
-			ClientSocket->Wait(ESocketWaitConditions::WaitForReadOrWrite, FTimespan(10));
+			ClientSocket->Wait(ESocketWaitConditions::WaitForReadOrWrite, FTimespan(1));
 		}
 	});
 }

@@ -81,9 +81,10 @@ public:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	
 protected:
+	TArray<FSocket*> Clients;
 	FSocket* ListenSocket;
 	FThreadSafeBool bShouldListen;
-	TFuture<void> ListenServerStoppedFuture;
+	TFuture<void> ServerFinishedFuture;
 
 	FString SocketDescription;
 	TSharedPtr<FInternetAddr> RemoteAdress;
