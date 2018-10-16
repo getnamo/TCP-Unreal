@@ -7,46 +7,14 @@
 
 UTCPServerComponent::UTCPServerComponent(const FObjectInitializer &init) : UActorComponent(init)
 {
-	bShouldAutoConnectAsClient = false;
 	bShouldAutoListen = true;
 	bReceiveDataOnGameThread = true;
 	bWantsInitializeComponent = true;
 	bAutoActivate = true;
-	ClientIP = FString(TEXT("127.0.0.1"));
-	ClientPort = 3000;
-	ListenPort = 3001;
-	ClientSocketName = FString(TEXT("ue4-tcp-client"));
+	ListenPort = 3000;
 	ListenSocketName = FString(TEXT("ue4-tcp-server"));
 
 	BufferMaxSize = 2 * 1024 * 1024;	//default roughly 2mb
-}
-
-void UTCPServerComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("127.0.0.1")*/, const int32 InPort /*= 3000*/)
-{
-	RemoteAdress = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateInternetAddr();
-	
-	bool bIsValid;
-	RemoteAdress->SetIp(*InIP, bIsValid);
-	RemoteAdress->SetPort(InPort);
-
-	if (!bIsValid)
-	{
-		UE_LOG(LogTemp, Error, TEXT("TCP address is invalid <%s:%d>"), *InIP, InPort);
-		return ;
-	}
-
-	ClientSocket = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateSocket(NAME_Stream, ClientSocketName, false);
-
-	//Set Send Buffer Size
-	ClientSocket->SetSendBufferSize(BufferMaxSize, BufferMaxSize);
-	ClientSocket->SetReceiveBufferSize(BufferMaxSize, BufferMaxSize);
-
-	bool bDidConnect = ClientSocket->Connect(*RemoteAdress);
-
-	if (bDidConnect) 
-	{
-		OnClientConnectedToListenServer.Broadcast();
-	}
 }
 
 void UTCPServerComponent::StartListenServer(const int32 InListenPort)
@@ -121,22 +89,12 @@ void UTCPServerComponent::CloseListenServer()
 	}
 }
 
-void UTCPServerComponent::CloseClientSocket()
-{
-	if (ClientSocket)
-	{
-		ClientSocket->Close();
-		ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(ClientSocket);
-		ClientSocket = nullptr;
-	}
-}
-
 void UTCPServerComponent::Emit(const TArray<uint8>& Bytes)
 {
-	if (ClientSocket->GetConnectionState() == SCS_Connected)
+	if (ListenSocket->GetConnectionState() == SCS_Connected)
 	{
 		int32 BytesSent = 0;
-		ClientSocket->Send(Bytes.GetData(), Bytes.Num(), BytesSent);
+		ListenSocket->Send(Bytes.GetData(), Bytes.Num(), BytesSent);
 	}
 }
 
@@ -158,36 +116,11 @@ void UTCPServerComponent::BeginPlay()
 	{
 		StartListenServer(ListenPort);
 	}
-	if (bShouldAutoConnectAsClient)
-	{
-		ConnectToSocketAsClient(ClientIP, ClientPort);
-	}
 }
 
 void UTCPServerComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	CloseClientSocket();
 	CloseListenServer();
 
 	Super::EndPlay(EndPlayReason);
-}
-
-void UTCPServerComponent::OnDataReceivedDelegate(const FArrayReaderPtr& DataPtr, const FIPv4Endpoint& Endpoint)
-{
-	TArray<uint8> Data;
-	Data.AddUninitialized(DataPtr->TotalSize());
-	DataPtr->Serialize(Data.GetData(), DataPtr->TotalSize());
-
-	if (bReceiveDataOnGameThread)
-	{
-		//Pass the reference to be used on gamethread
-		AsyncTask(ENamedThreads::GameThread, [&, Data]()
-		{
-			OnReceivedBytes.Broadcast(Data);
-		});
-	}
-	else
-	{
-		OnReceivedBytes.Broadcast(Data);
-	}
 }
