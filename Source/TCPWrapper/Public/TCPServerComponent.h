@@ -23,15 +23,15 @@ public:
 
 	/** Callback when we start listening on the TCP receive socket*/
 	UPROPERTY(BlueprintAssignable, Category = "TCP Events")
-	FTCPEventSignature OnListenServerStarted;
+	FTCPEventSignature OnListenBegin;
 
 	/** Called after receiving socket has been closed. */
 	UPROPERTY(BlueprintAssignable, Category = "TCP Events")
-	FTCPEventSignature OnListenServerStopped;
+	FTCPEventSignature OnListenEnd;
 
 	/** Callback when we start listening on the TCP receive socket*/
 	UPROPERTY(BlueprintAssignable, Category = "TCP Events")
-	FTCPClientSignature OnClientConnectedToListenServer;
+	FTCPClientSignature OnClientConnected;
 
 	/** Default connection port e.g. 3001*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")

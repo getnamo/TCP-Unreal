@@ -12,16 +12,13 @@ TFuture<void> RunLambdaOnBackGroundThread(TFunction< void()> InFunction)
 
 UTCPClientComponent::UTCPClientComponent(const FObjectInitializer &init) : UActorComponent(init)
 {
-	bShouldAutoConnectAsClient = false;
-	bShouldAutoListen = true;
+	bShouldAutoConnectOnBeginPlay = false;
 	bReceiveDataOnGameThread = true;
 	bWantsInitializeComponent = true;
 	bAutoActivate = true;
-	ClientIP = FString(TEXT("127.0.0.1"));
-	ClientPort = 3000;
-	ListenPort = 3001;
+	ConnectionIP = FString(TEXT("127.0.0.1"));
+	ConnectionPort = 3000;
 	ClientSocketName = FString(TEXT("ue4-tcp-client"));
-	ListenSocketName = FString(TEXT("ue4-tcp-server"));
 
 	BufferMaxSize = 2 * 1024 * 1024;	//default roughly 2mb
 }
@@ -50,83 +47,13 @@ void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("
 
 	if (bDidConnect) 
 	{
-		OnClientConnectedToListenServer.Broadcast();
+		OnConnected.Broadcast();
 	}
+
+	//Listen for data on our end
 }
 
-void UTCPClientComponent::StartListenServer(const int32 InListenPort)
-{
-	FIPv4Address Addr;
-	FIPv4Address::Parse(TEXT("0.0.0.0"), Addr);
-
-	//Create Socket
-	FIPv4Endpoint Endpoint(Addr, InListenPort);
-
-	ListenSocket = FTcpSocketBuilder(*ListenSocketName)
-		.AsNonBlocking()
-		.AsReusable()
-		.BoundToEndpoint(Endpoint)
-		.WithReceiveBufferSize(BufferMaxSize);
-
-	ListenSocket->SetReceiveBufferSize(BufferMaxSize, BufferMaxSize);
-	ListenSocket->SetSendBufferSize(BufferMaxSize, BufferMaxSize);
-
-	ListenSocket->Listen(8);
-
-	OnListenServerStarted.Broadcast();
-
-	//Start a lambda thread to handle data
-	FTCPWrapperUtility::RunLambdaOnBackGroundThread([&]()
-	{
-		uint32 BufferSize = 0;
-		TArray<uint8> ReceiveBuffer;
-		while (ListenSocket->HasPendingData(BufferSize) && bShouldContinueListening)
-		{
-			ReceiveBuffer.SetNumUninitialized(BufferSize);
-
-			int32 Read = 0;
-			ListenSocket->Recv(ReceiveBuffer.GetData(), ReceiveBuffer.Num(), Read);
-
-			if (bReceiveDataOnGameThread)
-			{
-				//Copy buffer so it's still valid on game thread
-				TArray<uint8> ReceiveBufferGT;
-				ReceiveBufferGT.Append(ReceiveBuffer);
-
-				//Pass the reference to be used on gamethread
-				AsyncTask(ENamedThreads::GameThread, [&, ReceiveBufferGT]()
-				{
-					OnReceivedBytes.Broadcast(ReceiveBufferGT);
-				});
-			}
-			else
-			{
-				OnReceivedBytes.Broadcast(ReceiveBuffer);
-			}
-
-			//FPlatformProcess::Sleep();
-		}
-
-		//Cleanup our receiver ?
-	});
-}
-
-void UTCPClientComponent::CloseListenServer()
-{
-	if (ListenSocket)
-	{
-		bShouldContinueListening = false;
-		ListenServerStoppedFuture.Get();
-
-		ListenSocket->Close();
-		ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(ListenSocket);
-		ListenSocket = nullptr;
-
-		OnListenServerStopped.Broadcast();
-	}
-}
-
-void UTCPClientComponent::CloseClientSocket()
+void UTCPClientComponent::CloseSocket()
 {
 	if (ClientSocket)
 	{
@@ -159,20 +86,15 @@ void UTCPClientComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (bShouldAutoListen)
+	if (bShouldAutoConnectOnBeginPlay)
 	{
-		StartListenServer(ListenPort);
-	}
-	if (bShouldAutoConnectAsClient)
-	{
-		ConnectToSocketAsClient(ClientIP, ClientPort);
+		ConnectToSocketAsClient(ConnectionIP, ConnectionPort);
 	}
 }
 
 void UTCPClientComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	CloseClientSocket();
-	CloseListenServer();
+	CloseSocket();
 
 	Super::EndPlay(EndPlayReason);
 }

@@ -36,7 +36,7 @@ void UTCPServerComponent::StartListenServer(const int32 InListenPort)
 
 	ListenSocket->Listen(8);
 
-	OnListenServerStarted.Broadcast();
+	OnListenBegin.Broadcast();
 
 	//Start a lambda thread to handle data
 	FTCPWrapperUtility::RunLambdaOnBackGroundThread([&]()
@@ -85,7 +85,7 @@ void UTCPServerComponent::CloseListenServer()
 		ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(ListenSocket);
 		ListenSocket = nullptr;
 
-		OnListenServerStopped.Broadcast();
+		OnListenEnd.Broadcast();
 	}
 }
 

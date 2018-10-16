@@ -21,36 +21,17 @@ public:
 
 	/** Callback when we start listening on the TCP receive socket*/
 	UPROPERTY(BlueprintAssignable, Category = "TCP Events")
-	FTCPEventSignature OnListenServerStarted;
-
-	/** Called after receiving socket has been closed. */
-	UPROPERTY(BlueprintAssignable, Category = "TCP Events")
-	FTCPEventSignature OnListenServerStopped;
-
-	/** Callback when we start listening on the TCP receive socket*/
-	UPROPERTY(BlueprintAssignable, Category = "TCP Events")
-	FTCPEventSignature OnClientConnectedToListenServer;
-
-	/** Callback when we start listening on the TCP receive socket*/
-	UPROPERTY(BlueprintAssignable, Category = "TCP Events")
-	FTCPEventSignature OnConnectedToClientSocket;
+	FTCPEventSignature OnConnected;
 
 	/** Default sending socket IP string in form e.g. 127.0.0.1. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
-	FString ClientIP;
+	FString ConnectionIP;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
-	int32 ClientPort;
-
-	/** Default connection port e.g. 3001*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
-	int32 ListenPort;
+	int32 ConnectionPort;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
 	FString ClientSocketName;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
-	FString ListenSocketName;
 
 	/** in bytes */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
@@ -58,13 +39,9 @@ public:
 
 	/** If true will auto-connect on begin play to IP/port specified as a client. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
-	bool bShouldAutoConnectAsClient;
+	bool bShouldAutoConnectOnBeginPlay;
 
-	/** If true will auto-listen on begin play to port specified for receiving TCP messages. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
-	bool bShouldAutoListen;
-
-	/** Whether we should process our data on the gamethread or the TCP thread. */
+	/** Whether we should process our data on the game thread or the TCP thread. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
 	bool bReceiveDataOnGameThread;
 
@@ -87,19 +64,7 @@ public:
 	* Close the sending socket. This is usually automatically done on endplay.
 	*/
 	UFUNCTION(BlueprintCallable, Category = "TCP Functions")
-	void CloseClientSocket();
-
-	/** 
-	* Start listening at given port for TCP messages. Will auto-listen on begin play by default
-	*/
-	UFUNCTION(BlueprintCallable, Category = "TCP Functions")
-	void StartListenServer(const int32 InListenPort = 3001);
-
-	/**
-	* Close the receiving socket. This is usually automatically done on endplay.
-	*/
-	UFUNCTION(BlueprintCallable, Category = "TCP Functions")
-	void CloseListenServer();
+	void CloseSocket();
 
 	/**
 	* Emit specified bytes to the TCP channel.
@@ -116,9 +81,8 @@ public:
 	
 protected:
 	FSocket* ClientSocket;
-	FSocket* ListenSocket;
 	FThreadSafeBool bShouldContinueListening;
-	TFuture<void> ListenServerStoppedFuture;
+	TFuture<void> ClientConnectionFinishedFuture;
 
 	void OnDataReceivedDelegate(const FArrayReaderPtr& DataPtr, const FIPv4Endpoint& Endpoint);
 
