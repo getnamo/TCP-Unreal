@@ -44,10 +44,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
 	int32 BufferMaxSize;
 
-	/** lower is better at expense of cpu utilization, in seconds (10 microns default)*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
-	float SocketSleepTime;
-
 	/** If true will auto-listen on begin play to port specified for receiving TCP messages. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
 	bool bShouldAutoListen;

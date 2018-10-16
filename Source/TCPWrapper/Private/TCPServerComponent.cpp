@@ -43,42 +43,53 @@ void UTCPServerComponent::StartListenServer(const int32 InListenPort)
 	{
 		uint32 BufferSize = 0;
 		TArray<uint8> ReceiveBuffer;
-		while (ListenSocket->HasPendingData(BufferSize) && bShouldContinueListening)
+		while (bShouldListen)
 		{
-			ReceiveBuffer.SetNumUninitialized(BufferSize);
-
-			int32 Read = 0;
-			ListenSocket->Recv(ReceiveBuffer.GetData(), ReceiveBuffer.Num(), Read);
-
-			if (bReceiveDataOnGameThread)
+			//Do we have clients trying to connect? connect them
+			bool bHasPendingConnection;
+			ListenSocket->HasPendingConnection(bHasPendingConnection);
+			if (bHasPendingConnection)
 			{
-				//Copy buffer so it's still valid on game thread
-				TArray<uint8> ReceiveBufferGT;
-				ReceiveBufferGT.Append(ReceiveBuffer);
+				FString Description = ListenSocket->GetDescription();
+				ListenSocket->Accept(Description);
+			}
 
-				//Pass the reference to be used on gamethread
-				AsyncTask(ENamedThreads::GameThread, [&, ReceiveBufferGT]()
+			if (ListenSocket->HasPendingData(BufferSize))
+			{
+				ReceiveBuffer.SetNumUninitialized(BufferSize);
+
+				int32 Read = 0;
+				ListenSocket->Recv(ReceiveBuffer.GetData(), ReceiveBuffer.Num(), Read);
+
+				if (bReceiveDataOnGameThread)
 				{
-					OnReceivedBytes.Broadcast(ReceiveBufferGT);
-				});
-			}
-			else
-			{
-				OnReceivedBytes.Broadcast(ReceiveBuffer);
-			}
+					//Copy buffer so it's still valid on game thread
+					TArray<uint8> ReceiveBufferGT;
+					ReceiveBufferGT.Append(ReceiveBuffer);
 
-			//FPlatformProcess::Sleep();
+					//Pass the reference to be used on gamethread
+					AsyncTask(ENamedThreads::GameThread, [&, ReceiveBufferGT]()
+					{
+						OnReceivedBytes.Broadcast(ReceiveBufferGT);
+					});
+				}
+				else
+				{
+					OnReceivedBytes.Broadcast(ReceiveBuffer);
+				}
+
+				//sleep until there is data or 10 ticks
+				ListenSocket->Wait(ESocketWaitConditions::WaitForReadOrWrite, FTimespan(10));
+			}
 		}
-
-		//Cleanup our receiver ?
 	});
 }
 
-void UTCPServerComponent::CloseListenServer()
+void UTCPServerComponent::StopListenServer()
 {
 	if (ListenSocket)
 	{
-		bShouldContinueListening = false;
+		bShouldListen = false;
 		ListenServerStoppedFuture.Get();
 
 		ListenSocket->Close();
@@ -89,7 +100,7 @@ void UTCPServerComponent::CloseListenServer()
 	}
 }
 
-void UTCPServerComponent::Emit(const TArray<uint8>& Bytes)
+void UTCPServerComponent::Emit(const TArray<uint8>& Bytes, const FString& ToClient)
 {
 	if (ListenSocket->GetConnectionState() == SCS_Connected)
 	{
@@ -120,7 +131,7 @@ void UTCPServerComponent::BeginPlay()
 
 void UTCPServerComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	CloseListenServer();
+	StopListenServer();
 
 	Super::EndPlay(EndPlayReason);
 }
