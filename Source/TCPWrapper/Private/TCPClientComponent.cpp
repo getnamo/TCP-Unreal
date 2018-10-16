@@ -83,8 +83,8 @@ void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("
 					OnReceivedBytes.Broadcast(ReceiveBuffer);
 				}
 			}
-			//sleep 10 microseconds
-			FPlatformProcess::Sleep(0.00001);
+			//sleep until there is data or 10 ticks
+			ClientSocket->Wait(ESocketWaitConditions::WaitForReadOrWrite, FTimespan(10));
 		}
 	});
 }

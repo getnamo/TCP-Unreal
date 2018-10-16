@@ -44,11 +44,15 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
 	int32 BufferMaxSize;
 
+	/** lower is better at expense of cpu utilization, in seconds (10 microns default)*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
+	float SocketSleepTime;
+
 	/** If true will auto-listen on begin play to port specified for receiving TCP messages. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
 	bool bShouldAutoListen;
 
-	/** Whether we should process our data on the gamethread or the TCP thread. */
+	/** Whether we should process our data on the game thread or the TCP thread. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
 	bool bReceiveDataOnGameThread;
 
@@ -62,10 +66,10 @@ public:
 	void StartListenServer(const int32 InListenPort = 3001);
 
 	/**
-	* Close the receiving socket. This is usually automatically done on endplay.
+	* Close the receiving socket. This is usually automatically done on end play.
 	*/
 	UFUNCTION(BlueprintCallable, Category = "TCP Functions")
-	void CloseListenServer();
+	void StopListenServer();
 
 	/**
 	* Emit specified bytes to the TCP channel.
@@ -73,7 +77,7 @@ public:
 	* @param Message	Bytes
 	*/
 	UFUNCTION(BlueprintCallable, Category = "TCP Functions")
-	void Emit(const TArray<uint8>& Bytes);
+	void Emit(const TArray<uint8>& Bytes, const FString& ToClient = TEXT("All"));
 
 	virtual void InitializeComponent() override;
 	virtual void UninitializeComponent() override;
@@ -82,13 +86,9 @@ public:
 	
 protected:
 	FSocket* ListenSocket;
-	FThreadSafeBool bShouldContinueListening;
+	FThreadSafeBool bShouldListen;
 	TFuture<void> ListenServerStoppedFuture;
 
-	void OnDataReceivedDelegate(const FArrayReaderPtr& DataPtr, const FIPv4Endpoint& Endpoint);
-
-	//FTCPSocketReceiver* TCPReceiver;
 	FString SocketDescription;
 	TSharedPtr<FInternetAddr> RemoteAdress;
-	ISocketSubsystem* SocketSubsystem;
 };
