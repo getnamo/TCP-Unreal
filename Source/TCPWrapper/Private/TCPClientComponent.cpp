@@ -43,7 +43,6 @@ void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("
 	//Set Send Buffer Size
 	ClientSocket->SetSendBufferSize(BufferMaxSize, BufferMaxSize);
 	ClientSocket->SetReceiveBufferSize(BufferMaxSize, BufferMaxSize);
-	//ClientSocket->Listen(8);
 
 	bIsConnected = ClientSocket->Connect(*RemoteAdress);
 
@@ -51,22 +50,15 @@ void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("
 	{
 		OnConnected.Broadcast();
 	}
-	bShouldContinueListening = true;
+	bShouldReceiveData = true;
 
 	//Listen for data on our end
 	ClientConnectionFinishedFuture = FTCPWrapperUtility::RunLambdaOnBackGroundThread([&]()
 	{
 		uint32 BufferSize = 0;
 		TArray<uint8> ReceiveBuffer;
-		while (bShouldContinueListening)
+		while (bShouldReceiveData)
 		{
-			bool bHasPendingConnection;
-			ClientSocket->HasPendingConnection(bHasPendingConnection);
-			if (bHasPendingConnection) 
-			{
-				UE_LOG(LogTemp, Log, TEXT("has waiting connection"));
-			}
-
 			if (ClientSocket->HasPendingData(BufferSize))
 			{
 				ReceiveBuffer.SetNumUninitialized(BufferSize);
@@ -91,8 +83,8 @@ void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("
 					OnReceivedBytes.Broadcast(ReceiveBuffer);
 				}
 			}
-			//sleep 0.1ms
-			FPlatformProcess::Sleep(0.0001);
+			//sleep 10 microseconds
+			FPlatformProcess::Sleep(0.00001);
 		}
 	});
 }
@@ -101,7 +93,7 @@ void UTCPClientComponent::CloseSocket()
 {
 	if (ClientSocket)
 	{
-		bShouldContinueListening = false;
+		bShouldReceiveData = false;
 		ClientConnectionFinishedFuture.Get();
 
 		ClientSocket->Close();
@@ -144,24 +136,4 @@ void UTCPClientComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	CloseSocket();
 
 	Super::EndPlay(EndPlayReason);
-}
-
-void UTCPClientComponent::OnDataReceivedDelegate(const FArrayReaderPtr& DataPtr, const FIPv4Endpoint& Endpoint)
-{
-	TArray<uint8> Data;
-	Data.AddUninitialized(DataPtr->TotalSize());
-	DataPtr->Serialize(Data.GetData(), DataPtr->TotalSize());
-
-	if (bReceiveDataOnGameThread)
-	{
-		//Pass the reference to be used on gamethread
-		AsyncTask(ENamedThreads::GameThread, [&, Data]()
-		{
-			OnReceivedBytes.Broadcast(Data);
-		});
-	}
-	else
-	{
-		OnReceivedBytes.Broadcast(Data);
-	}
 }

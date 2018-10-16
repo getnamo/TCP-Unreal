@@ -81,13 +81,10 @@ public:
 	
 protected:
 	FSocket* ClientSocket;
-	FThreadSafeBool bShouldContinueListening;
+	FThreadSafeBool bShouldReceiveData;
 	TFuture<void> ClientConnectionFinishedFuture;
-
-	void OnDataReceivedDelegate(const FArrayReaderPtr& DataPtr, const FIPv4Endpoint& Endpoint);
 
 	//FTCPSocketReceiver* TCPReceiver;
 	FString SocketDescription;
 	TSharedPtr<FInternetAddr> RemoteAdress;
-	ISocketSubsystem* SocketSubsystem;
 };
