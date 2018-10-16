@@ -1,6 +1,7 @@
 
-#include "TCPComponent.h"
+#include "TCPClientComponent.h"
 #include "Async.h"
+#include "TCPWrapperUtility.h"
 #include "Runtime/Sockets/Public/SocketSubsystem.h"
 #include "Runtime/Engine/Classes/Kismet/KismetSystemLibrary.h"
 
@@ -9,7 +10,7 @@ TFuture<void> RunLambdaOnBackGroundThread(TFunction< void()> InFunction)
 	return Async(EAsyncExecution::Thread, InFunction);
 }
 
-UTCPComponent::UTCPComponent(const FObjectInitializer &init) : UActorComponent(init)
+UTCPClientComponent::UTCPClientComponent(const FObjectInitializer &init) : UActorComponent(init)
 {
 	bShouldAutoConnectAsClient = false;
 	bShouldAutoListen = true;
@@ -25,7 +26,7 @@ UTCPComponent::UTCPComponent(const FObjectInitializer &init) : UActorComponent(i
 	BufferMaxSize = 2 * 1024 * 1024;	//default roughly 2mb
 }
 
-void UTCPComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("127.0.0.1")*/, const int32 InPort /*= 3000*/)
+void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("127.0.0.1")*/, const int32 InPort /*= 3000*/)
 {
 	RemoteAdress = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateInternetAddr();
 	
@@ -53,7 +54,7 @@ void UTCPComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("127.0.
 	}
 }
 
-void UTCPComponent::StartListenServer(const int32 InListenPort)
+void UTCPClientComponent::StartListenServer(const int32 InListenPort)
 {
 	FIPv4Address Addr;
 	FIPv4Address::Parse(TEXT("0.0.0.0"), Addr);
@@ -75,7 +76,7 @@ void UTCPComponent::StartListenServer(const int32 InListenPort)
 	OnListenServerStarted.Broadcast();
 
 	//Start a lambda thread to handle data
-	RunLambdaOnBackGroundThread([&]()
+	FTCPWrapperUtility::RunLambdaOnBackGroundThread([&]()
 	{
 		uint32 BufferSize = 0;
 		TArray<uint8> ReceiveBuffer;
@@ -110,7 +111,7 @@ void UTCPComponent::StartListenServer(const int32 InListenPort)
 	});
 }
 
-void UTCPComponent::CloseListenServer()
+void UTCPClientComponent::CloseListenServer()
 {
 	if (ListenSocket)
 	{
@@ -125,7 +126,7 @@ void UTCPComponent::CloseListenServer()
 	}
 }
 
-void UTCPComponent::CloseClientSocket()
+void UTCPClientComponent::CloseClientSocket()
 {
 	if (ClientSocket)
 	{
@@ -135,7 +136,7 @@ void UTCPComponent::CloseClientSocket()
 	}
 }
 
-void UTCPComponent::Emit(const TArray<uint8>& Bytes)
+void UTCPClientComponent::Emit(const TArray<uint8>& Bytes)
 {
 	if (ClientSocket->GetConnectionState() == SCS_Connected)
 	{
@@ -144,17 +145,17 @@ void UTCPComponent::Emit(const TArray<uint8>& Bytes)
 	}
 }
 
-void UTCPComponent::InitializeComponent()
+void UTCPClientComponent::InitializeComponent()
 {
 	Super::InitializeComponent();
 }
 
-void UTCPComponent::UninitializeComponent()
+void UTCPClientComponent::UninitializeComponent()
 {
 	Super::UninitializeComponent();
 }
 
-void UTCPComponent::BeginPlay()
+void UTCPClientComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
@@ -168,7 +169,7 @@ void UTCPComponent::BeginPlay()
 	}
 }
 
-void UTCPComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+void UTCPClientComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	CloseClientSocket();
 	CloseListenServer();
@@ -176,7 +177,7 @@ void UTCPComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
-void UTCPComponent::OnDataReceivedDelegate(const FArrayReaderPtr& DataPtr, const FIPv4Endpoint& Endpoint)
+void UTCPClientComponent::OnDataReceivedDelegate(const FArrayReaderPtr& DataPtr, const FIPv4Endpoint& Endpoint)
 {
 	TArray<uint8> Data;
 	Data.AddUninitialized(DataPtr->TotalSize());

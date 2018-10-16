@@ -3,13 +3,12 @@
 #include "Components/ActorComponent.h"
 #include "Networking.h"
 #include "Runtime/Sockets/Public/IPAddress.h"
-#include "TCPComponent.generated.h"
+#include "TCPServerComponent.h"
+#include "TCPClientComponent.generated.h"
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FTCPEventSignature);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FTCPMessageSignature, const TArray<uint8>&, Bytes);
 
 UCLASS(ClassGroup = "Networking", meta = (BlueprintSpawnableComponent))
-class TCPWRAPPER_API UTCPComponent : public UActorComponent
+class TCPWRAPPER_API UTCPClientComponent : public UActorComponent
 {
 	GENERATED_UCLASS_BODY()
 public:
