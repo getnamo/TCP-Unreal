@@ -17,3 +17,5 @@ Meant to be styled like https://github.com/getnamo/socketio-client-ue4 but for r
 ## How to use - Basics
  
 _Not yet written_. For now see https://github.com/getnamo/udp-ue4#how-to-use---basics as this plugin follows the udp plugin concepts closely but with bi-directional sockets instead.
+
+Need some simple test servers? Use [tcpEcho.js gist](https://gist.github.com/getnamo/7350f00823f46d9463240160320d03a3) to test ```TCPClientComponent``` and [tcpClient.js](https://gist.github.com/getnamo/396577cb4988188e291774ac7e368368) to test ```TCPServerComponent```.
