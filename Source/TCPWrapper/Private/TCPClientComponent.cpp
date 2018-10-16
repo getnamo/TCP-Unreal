@@ -51,6 +51,40 @@ void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("
 	}
 
 	//Listen for data on our end
+	FTCPWrapperUtility::RunLambdaOnBackGroundThread([&]()
+	{
+		uint32 BufferSize = 0;
+		TArray<uint8> ReceiveBuffer;
+		while (bShouldContinueListening)
+		{
+			if (ClientSocket->HasPendingData(BufferSize))
+			{
+				ReceiveBuffer.SetNumUninitialized(BufferSize);
+
+				int32 Read = 0;
+				ClientSocket->Recv(ReceiveBuffer.GetData(), ReceiveBuffer.Num(), Read);
+
+				if (bReceiveDataOnGameThread)
+				{
+					//Copy buffer so it's still valid on game thread
+					TArray<uint8> ReceiveBufferGT;
+					ReceiveBufferGT.Append(ReceiveBuffer);
+
+					//Pass the reference to be used on gamethread
+					AsyncTask(ENamedThreads::GameThread, [&, ReceiveBufferGT]()
+					{
+						OnReceivedBytes.Broadcast(ReceiveBufferGT);
+					});
+				}
+				else
+				{
+					OnReceivedBytes.Broadcast(ReceiveBuffer);
+				}
+			}
+			//sleep 0.1ms
+			FPlatformProcess::Sleep(0.0001);
+		}
+	});
 }
 
 void UTCPClientComponent::CloseSocket()
