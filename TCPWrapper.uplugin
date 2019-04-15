@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
 	"Version": 1,
-	"VersionName": "0.2.0",
+	"VersionName": "0.4.0",
 	"FriendlyName": "TCPWrapper",
 	"Description": "Convenience TCP wrapper plugin.",
 	"Category": "Networking",
