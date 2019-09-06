@@ -51,14 +51,16 @@ void UTCPServerComponent::StartListenServer(const int32 InListenPort)
 			ListenSocket->HasPendingConnection(bHasPendingConnection);
 			if (bHasPendingConnection)
 			{
-				FSocket* Client = ListenSocket->Accept(TEXT("tcp-client"));
 				TSharedPtr<FInternetAddr> Addr = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateInternetAddr();
-				Client->GetAddress(*Addr);
+				FSocket* Client = ListenSocket->Accept(*Addr,TEXT("tcp-client"));
+
+				const FString AddressString = Addr->ToString(true);
+
 				Clients.Add(Client);	//todo: balance this with remove when clients disconnect
 
-				AsyncTask(ENamedThreads::GameThread, [&, Addr]()
+				AsyncTask(ENamedThreads::GameThread, [&, AddressString]()
 				{
-					OnClientConnected.Broadcast(Addr->ToString(true));
+					OnClientConnected.Broadcast(AddressString);
 				});
 			}
 
