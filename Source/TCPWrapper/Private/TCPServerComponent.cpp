@@ -130,6 +130,12 @@ void UTCPServerComponent::StartListenServer(const int32 InListenPort)
 			FPlatformProcess::Sleep(0.0001);
 		}//end while
 
+		for (auto ClientPair : Clients)
+		{
+			ClientPair.Value->Socket->Close();
+		}
+		Clients.Empty();
+
 		//Server ended
 		AsyncTask(ENamedThreads::GameThread, [&]()
 		{
@@ -143,12 +149,6 @@ void UTCPServerComponent::StopListenServer()
 {
 	if (ListenSocket)
 	{
-		for (auto ClientPair : Clients)
-		{
-			ClientPair.Value->Socket->Close();
-		}
-		Clients.Empty();
-
 		bShouldListen = false;
 		ServerFinishedFuture.Get();
 
@@ -170,9 +170,11 @@ bool  UTCPServerComponent::Emit(const TArray<uint8>& Bytes, const FString& ToCli
 		{
 			//Success is all of the messages emitted successfully
 			bool Success = true;
-			for (auto ClientPair : Clients)
+			TArray<TSharedPtr<FTCPClient>> AllClients;
+
+			Clients.GenerateValueArray(AllClients);
+			for (TSharedPtr<FTCPClient>& Client : AllClients)
 			{
-				TSharedPtr<FTCPClient>Client = ClientPair.Value;
 				if (Client.IsValid())
 				{
 					bool Sent = Client->Socket->Send(Bytes.GetData(), Bytes.Num(), BytesSent);
