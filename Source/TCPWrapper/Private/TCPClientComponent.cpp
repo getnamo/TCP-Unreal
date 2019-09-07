@@ -102,13 +102,14 @@ void UTCPClientComponent::CloseSocket()
 	}
 }
 
-void UTCPClientComponent::Emit(const TArray<uint8>& Bytes)
+bool UTCPClientComponent::Emit(const TArray<uint8>& Bytes)
 {
 	if (ClientSocket && ClientSocket->GetConnectionState() == SCS_Connected)
 	{
 		int32 BytesSent = 0;
-		ClientSocket->Send(Bytes.GetData(), Bytes.Num(), BytesSent);
+		return ClientSocket->Send(Bytes.GetData(), Bytes.Num(), BytesSent);
 	}
+	return false;
 }
 
 void UTCPClientComponent::InitializeComponent()

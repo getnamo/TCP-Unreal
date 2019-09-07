@@ -72,7 +72,7 @@ public:
 	* @param Message	Bytes
 	*/
 	UFUNCTION(BlueprintCallable, Category = "TCP Functions")
-	void Emit(const TArray<uint8>& Bytes);
+	bool Emit(const TArray<uint8>& Bytes);
 
 	virtual void InitializeComponent() override;
 	virtual void UninitializeComponent() override;

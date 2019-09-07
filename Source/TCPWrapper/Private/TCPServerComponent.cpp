@@ -5,6 +5,7 @@
 #include "Runtime/Sockets/Public/SocketSubsystem.h"
 #include "Runtime/Engine/Classes/Kismet/KismetSystemLibrary.h"
 
+
 UTCPServerComponent::UTCPServerComponent(const FObjectInitializer &init) : UActorComponent(init)
 {
 	bShouldAutoListen = true;
@@ -13,6 +14,7 @@ UTCPServerComponent::UTCPServerComponent(const FObjectInitializer &init) : UActo
 	bAutoActivate = true;
 	ListenPort = 3000;
 	ListenSocketName = FString(TEXT("ue4-tcp-server"));
+	bDisconnectOnFailedEmit = true;
 
 	BufferMaxSize = 2 * 1024 * 1024;	//default roughly 2mb
 }
@@ -44,6 +46,8 @@ void UTCPServerComponent::StartListenServer(const int32 InListenPort)
 	{
 		uint32 BufferSize = 0;
 		TArray<uint8> ReceiveBuffer;
+		TArray<TSharedPtr<FTCPClient>> ClientsDisconnected;
+
 		while (bShouldListen)
 		{
 			//Do we have clients trying to connect? connect them
@@ -56,7 +60,11 @@ void UTCPServerComponent::StartListenServer(const int32 InListenPort)
 
 				const FString AddressString = Addr->ToString(true);
 
-				Clients.Add(Client);	//todo: balance this with remove when clients disconnect
+				TSharedPtr<FTCPClient> ClientItem = MakeShareable(new FTCPClient());
+				ClientItem->Address = AddressString;
+				ClientItem->Socket = Client;
+
+				Clients.Add(AddressString, ClientItem);	//todo: balance this with remove when clients disconnect
 
 				AsyncTask(ENamedThreads::GameThread, [&, AddressString]()
 				{
@@ -65,14 +73,24 @@ void UTCPServerComponent::StartListenServer(const int32 InListenPort)
 			}
 
 			//Check each endpoint for data
-			for (FSocket* Client : Clients)
+			for (auto ClientPair : Clients)
 			{
-				if (Client->HasPendingData(BufferSize))
+				TSharedPtr<FTCPClient> Client = ClientPair.Value;
+
+				//Did we disconnect? Note that this almost never changed from connected due to engine bug, instead it will be caught when trying to send data
+				ESocketConnectionState ConnectionState = Client->Socket->GetConnectionState();
+				if (ConnectionState != ESocketConnectionState::SCS_Connected)
+				{
+					ClientsDisconnected.Add(Client);
+					continue;
+				}
+
+				if (Client->Socket->HasPendingData(BufferSize))
 				{
 					ReceiveBuffer.SetNumUninitialized(BufferSize);
-
 					int32 Read = 0;
-					Client->Recv(ReceiveBuffer.GetData(), ReceiveBuffer.Num(), Read);
+
+					Client->Socket->Recv(ReceiveBuffer.GetData(), ReceiveBuffer.Num(), Read);
 
 					if (bReceiveDataOnGameThread)
 					{
@@ -93,8 +111,23 @@ void UTCPServerComponent::StartListenServer(const int32 InListenPort)
 				}
 			}
 
-			//sleep for 10microns
-			FPlatformProcess::Sleep(0.00001);
+			//Handle disconnections
+			if (ClientsDisconnected.Num() > 0)
+			{
+				for (TSharedPtr<FTCPClient> ClientToRemove : ClientsDisconnected)
+				{
+					const FString Address = ClientToRemove->Address;
+					Clients.Remove(Address);
+					AsyncTask(ENamedThreads::GameThread, [this, Address]()
+					{
+						OnClientDisconnected.Broadcast(Address);
+					});
+				}
+				ClientsDisconnected.Empty();
+			}
+
+			//sleep for 100microns
+			FPlatformProcess::Sleep(0.0001);
 		}//end while
 
 		//Server ended
@@ -110,11 +143,11 @@ void UTCPServerComponent::StopListenServer()
 {
 	if (ListenSocket)
 	{
-		//Gracefully close connections
-		for (FSocket* Client : Clients)
+		for (auto ClientPair : Clients)
 		{
-			Client->Close();
+			ClientPair.Value->Socket->Close();
 		}
+		Clients.Empty();
 
 		bShouldListen = false;
 		ServerFinishedFuture.Get();
@@ -127,7 +160,7 @@ void UTCPServerComponent::StopListenServer()
 	}
 }
 
-void UTCPServerComponent::Emit(const TArray<uint8>& Bytes, const FString& ToClient)
+bool  UTCPServerComponent::Emit(const TArray<uint8>& Bytes, const FString& ToClient)
 {
 	if (Clients.Num()>0)
 	{
@@ -135,24 +168,79 @@ void UTCPServerComponent::Emit(const TArray<uint8>& Bytes, const FString& ToClie
 		//simple multi-cast
 		if (ToClient == TEXT("All"))
 		{
-			for (FSocket* Client : Clients)
+			//Success is all of the messages emitted successfully
+			bool Success = true;
+			for (auto ClientPair : Clients)
 			{
-				Client->Send(Bytes.GetData(), Bytes.Num(), BytesSent);
+				TSharedPtr<FTCPClient>Client = ClientPair.Value;
+				if (Client.IsValid())
+				{
+					bool Sent = Client->Socket->Send(Bytes.GetData(), Bytes.Num(), BytesSent);
+					if (!Sent && bDisconnectOnFailedEmit)
+					{
+						Client->Socket->Close();
+					}
+					Success = Sent && Success;
+				}
 			}
+			return Success;
 		}
 		//match client address and port
 		else
 		{
-			TSharedPtr<FInternetAddr> Addr = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateInternetAddr();
-			for (FSocket* Client : Clients)
+			TSharedPtr<FTCPClient> Client = Clients[ToClient];
+
+			if (Client.IsValid())
 			{
-				Client->GetAddress(*Addr);
-				if (Addr->ToString(true) == ToClient)
+				bool Sent = Client->Socket->Send(Bytes.GetData(), Bytes.Num(), BytesSent);
+				if (!Sent && bDisconnectOnFailedEmit)
 				{
-					Client->Send(Bytes.GetData(), Bytes.Num(), BytesSent);
+					Client->Socket->Close();
 				}
+				return Sent;
 			}
 		}
+	}
+	return false;
+}
+
+void UTCPServerComponent::DisconnectClient(FString ClientAddress /*= TEXT("All")*/, bool bDisconnectNextTick/*=false*/)
+{
+	TFunction<void()> DisconnectFunction = [this, ClientAddress]
+	{
+		bool bDisconnectAll = ClientAddress == TEXT("All");
+
+		if (!bDisconnectAll)
+		{
+			TSharedPtr<FTCPClient> Client = Clients[ClientAddress];
+
+			if (Client.IsValid())
+			{
+				Client->Socket->Close();
+				Clients.Remove(Client->Address);
+				OnClientDisconnected.Broadcast(ClientAddress);
+			}
+		}
+		else
+		{
+			for (auto ClientPair : Clients)
+			{
+				TSharedPtr<FTCPClient> Client = ClientPair.Value;
+				Client->Socket->Close();
+				Clients.Remove(Client->Address);
+				OnClientDisconnected.Broadcast(ClientAddress);
+			}
+		}
+	};
+
+	if (bDisconnectNextTick)
+	{
+		//disconnect on next tick
+		AsyncTask(ENamedThreads::GameThread, DisconnectFunction);
+	}
+	else
+	{
+		DisconnectFunction();
 	}
 }
 

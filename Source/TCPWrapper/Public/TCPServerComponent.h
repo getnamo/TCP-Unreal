@@ -9,6 +9,17 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FTCPEventSignature);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FTCPMessageSignature, const TArray<uint8>&, Bytes);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FTCPClientSignature, const FString&, Client);
 
+struct FTCPClient
+{
+	FSocket* Socket;
+	FString Address;
+
+	bool operator==(const FTCPClient& Other)
+	{
+		return Address == Other.Address;
+	}
+};
+
 UCLASS(ClassGroup = "Networking", meta = (BlueprintSpawnableComponent))
 class TCPWRAPPER_API UTCPServerComponent : public UActorComponent
 {
@@ -33,6 +44,10 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "TCP Events")
 	FTCPClientSignature OnClientConnected;
 
+	//This will only get called if an emit fails due to how FSocket works. Use custom disconnect logic if possible.
+	UPROPERTY(BlueprintAssignable, Category = "TCP Events")
+	FTCPClientSignature OnClientDisconnected;
+
 	/** Default connection port e.g. 3001*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
 	int32 ListenPort;
@@ -51,6 +66,10 @@ public:
 	/** Whether we should process our data on the game thread or the TCP thread. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
 	bool bReceiveDataOnGameThread;
+
+	/** With current FSocket architecture, this is about the only way to catch a disconnection*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
+	bool bDisconnectOnFailedEmit;
 
 	UPROPERTY(BlueprintReadOnly, Category = "TCP Connection Properties")
 	bool bIsConnected;
@@ -71,9 +90,17 @@ public:
 	* Emit specified bytes to the TCP channel.
 	*
 	* @param Message	Bytes
+	* @param ToClient	Client Address and port, obtained from connection event or 'All' for multicast
 	*/
 	UFUNCTION(BlueprintCallable, Category = "TCP Functions")
-	void Emit(const TArray<uint8>& Bytes, const FString& ToClient = TEXT("All"));
+	bool Emit(const TArray<uint8>& Bytes, const FString& ToClient = TEXT("All"));
+
+	/** 
+	* Disconnects client on the next tick
+	* @param ClientAddress	Client Address and port, obtained from connection event or 'All' for multicast
+	*/
+	UFUNCTION(BlueprintCallable, Category = "TCP Functions")
+	void DisconnectClient(FString ClientAddress = TEXT("All"), bool bDisconnectNextTick = false);
 
 	virtual void InitializeComponent() override;
 	virtual void UninitializeComponent() override;
@@ -81,7 +108,7 @@ public:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	
 protected:
-	TArray<FSocket*> Clients;
+	TMap<FString, TSharedPtr<FTCPClient>> Clients;
 	FSocket* ListenSocket;
 	FThreadSafeBool bShouldListen;
 	TFuture<void> ServerFinishedFuture;
