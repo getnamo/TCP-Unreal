@@ -124,6 +124,7 @@ protected:
 	FSocket* ListenSocket;
 	FThreadSafeBool bShouldListen;
 	TFuture<void> ServerFinishedFuture;
+	TArray<uint8> PingData;
 
 	FString SocketDescription;
 	TSharedPtr<FInternetAddr> RemoteAdress;

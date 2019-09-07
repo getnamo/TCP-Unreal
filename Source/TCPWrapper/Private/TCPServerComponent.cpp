@@ -125,10 +125,8 @@ void UTCPServerComponent::StartListenServer(const int32 InListenPort)
 					if (TimeSinceLastPing > PingInterval)
 					{
 						LastPing = Now;
-						TArray<uint8> PingData;
-						PingData.Add(0);
 						int32 BytesSent = 0;
-						bool Sent = Client->Socket->Send(PingData.GetData(), 1, BytesSent);
+						bool Sent = Client->Socket->Send(PingData.GetData(), PingData.Num(), BytesSent);
 						//UE_LOG(LogTemp, Log, TEXT("ping."));
 						if (!Sent)
 						{
@@ -277,6 +275,8 @@ void UTCPServerComponent::DisconnectClient(FString ClientAddress /*= TEXT("All")
 void UTCPServerComponent::InitializeComponent()
 {
 	Super::InitializeComponent();
+
+	PingData.Append((uint8*)TCHAR_TO_UTF8(*PingMessage), PingMessage.Len());
 }
 
 void UTCPServerComponent::UninitializeComponent()
