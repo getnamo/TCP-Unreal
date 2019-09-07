@@ -13,8 +13,11 @@ UTCPServerComponent::UTCPServerComponent(const FObjectInitializer &init) : UActo
 	bWantsInitializeComponent = true;
 	bAutoActivate = true;
 	ListenPort = 3000;
-	ListenSocketName = FString(TEXT("ue4-tcp-server"));
+	ListenSocketName = TEXT("ue4-tcp-server");
 	bDisconnectOnFailedEmit = true;
+	bShouldPing = false;
+	PingInterval = 10.0f;
+	PingMessage = TEXT("<Ping>");
 
 	BufferMaxSize = 2 * 1024 * 1024;	//default roughly 2mb
 }
@@ -47,6 +50,8 @@ void UTCPServerComponent::StartListenServer(const int32 InListenPort)
 		uint32 BufferSize = 0;
 		TArray<uint8> ReceiveBuffer;
 		TArray<TSharedPtr<FTCPClient>> ClientsDisconnected;
+
+		FDateTime LastPing = FDateTime::Now();
 
 		while (bShouldListen)
 		{
@@ -107,6 +112,29 @@ void UTCPServerComponent::StartListenServer(const int32 InListenPort)
 					else
 					{
 						OnReceivedBytes.Broadcast(ReceiveBuffer);
+					}
+				}
+
+				//ping check
+
+				if (bShouldPing)
+				{
+					FDateTime Now = FDateTime::Now();
+					float TimeSinceLastPing = (Now - LastPing).GetTotalSeconds();
+
+					if (TimeSinceLastPing > PingInterval)
+					{
+						LastPing = Now;
+						TArray<uint8> PingData;
+						PingData.Add(0);
+						int32 BytesSent = 0;
+						bool Sent = Client->Socket->Send(PingData.GetData(), 1, BytesSent);
+						//UE_LOG(LogTemp, Log, TEXT("ping."));
+						if (!Sent)
+						{
+							//UE_LOG(LogTemp, Log, TEXT("did not send."));
+							Client->Socket->Close();
+						}
 					}
 				}
 			}

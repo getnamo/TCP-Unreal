@@ -71,6 +71,18 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
 	bool bDisconnectOnFailedEmit;
 
+	/** Convenience ping send utility used to determine if connection disconnected. This is a custom system and not a normal ping*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
+	bool bShouldPing;
+
+	/** How often we should ping */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
+	float PingInterval;
+
+	/** What the default ping message should be*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
+	FString PingMessage;
+
 	UPROPERTY(BlueprintReadOnly, Category = "TCP Connection Properties")
 	bool bIsConnected;
 
