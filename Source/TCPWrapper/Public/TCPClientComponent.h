@@ -2,7 +2,7 @@
 
 #include "Components/ActorComponent.h"
 #include "Networking.h"
-#include "Runtime/Sockets/Public/IPAddress.h"
+#include "IPAddress.h"
 #include "TCPServerComponent.h"
 #include "TCPClientComponent.generated.h"
 

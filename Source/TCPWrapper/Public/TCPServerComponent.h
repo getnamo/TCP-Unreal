@@ -2,7 +2,7 @@
 
 #include "Components/ActorComponent.h"
 #include "Networking.h"
-#include "Runtime/Sockets/Public/IPAddress.h"
+#include "IPAddress.h"
 #include "TCPServerComponent.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FTCPEventSignature);

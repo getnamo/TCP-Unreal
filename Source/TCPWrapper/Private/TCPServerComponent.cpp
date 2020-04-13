@@ -1,9 +1,9 @@
 
 #include "TCPServerComponent.h"
-#include "Runtime/Core/Public/Async/Async.h"
+#include "Async/Async.h"
 #include "TCPWrapperUtility.h"
-#include "Runtime/Sockets/Public/SocketSubsystem.h"
-#include "Runtime/Engine/Classes/Kismet/KismetSystemLibrary.h"
+#include "SocketSubsystem.h"
+#include "Kismet/KismetSystemLibrary.h"
 
 
 UTCPServerComponent::UTCPServerComponent(const FObjectInitializer &init) : UActorComponent(init)
