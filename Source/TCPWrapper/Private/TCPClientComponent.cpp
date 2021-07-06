@@ -44,9 +44,9 @@ void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("
 	ClientSocket->SetSendBufferSize(BufferMaxSize, BufferMaxSize);
 	ClientSocket->SetReceiveBufferSize(BufferMaxSize, BufferMaxSize);
 
-	bIsConnected = ClientSocket->Connect(*RemoteAdress);
+	ClientSocket->Connect(*RemoteAdress);
 
-	if (bIsConnected)
+	if (IsConnected())
 	{
 		OnConnected.Broadcast();
 	}
