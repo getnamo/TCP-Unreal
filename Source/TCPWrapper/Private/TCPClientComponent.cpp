@@ -112,6 +112,14 @@ bool UTCPClientComponent::Emit(const TArray<uint8>& Bytes)
 	return false;
 }
 
+bool UTCPClientComponent::IsConnected()
+{
+	if (ClientSocket && (ClientSocket->GetConnectionState() == ESocketConnectionState::SCS_Connected))
+		return true;
+
+	return false;
+}
+
 void UTCPClientComponent::InitializeComponent()
 {
 	Super::InitializeComponent();
