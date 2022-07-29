@@ -26,17 +26,37 @@ UTCPClientComponent::UTCPClientComponent(const FObjectInitializer &init) : UActo
 
 void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("127.0.0.1")*/, const int32 InPort /*= 3000*/)
 {
+	
+	ISocketSubsystem* SocketSubsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
+
+	if (SocketSubsystem == nullptr)
+    {
+        UE_LOG(LogTemp, Error, TEXT("TCPClientComponent: SocketSubsystem is nullptr"));
+        return;
+    }
+
+	auto ResolveInfo = SocketSubsystem->GetHostByName(TCHAR_TO_ANSI(*InIP));
+	while (!ResolveInfo->IsComplete());
+
+	auto error = ResolveInfo->GetErrorCode();
+
+	if (error != 0)
+    {
+        UE_LOG(LogTemp, Error, TEXT("TCPClientComponent: DNS resolve error code %d"), error);
+        return;
+    }
+
 	RemoteAdress = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateInternetAddr();
 	
-	bool bIsValid;
-	RemoteAdress->SetIp(*InIP, bIsValid);
+	//bool bIsValid;
+	RemoteAdress->SetRawIp(ResolveInfo->GetResolvedAddress().GetRawIp()); // todo: somewhat wasteful, we could probably use the same address object?
 	RemoteAdress->SetPort(InPort);
 
-	if (!bIsValid)
+	/*if (!bIsValid)
 	{
 		UE_LOG(LogTemp, Error, TEXT("TCP address is invalid <%s:%d>"), *InIP, InPort);
 		return ;
-	}
+	}*/
 
 	ClientSocket = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateSocket(NAME_Stream, ClientSocketName, false);
 
