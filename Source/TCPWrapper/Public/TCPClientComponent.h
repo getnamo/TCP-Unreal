@@ -45,9 +45,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
 	bool bReceiveDataOnGameThread;
 
-	UPROPERTY(BlueprintReadOnly, Category = "TCP Connection Properties")
-	bool bIsConnected;
-
 
 	/**
 	* Connect to a TCP endpoint, optional method if auto-connect is set to true.
@@ -73,6 +70,9 @@ public:
 	*/
 	UFUNCTION(BlueprintCallable, Category = "TCP Functions")
 	bool Emit(const TArray<uint8>& Bytes);
+	
+	UFUNCTION(BlueprintCallable, Category = "TCP Functions")
+	bool IsConnected();
 
 	virtual void InitializeComponent() override;
 	virtual void UninitializeComponent() override;

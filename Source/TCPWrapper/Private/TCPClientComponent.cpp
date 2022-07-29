@@ -64,9 +64,9 @@ void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("
 	ClientSocket->SetSendBufferSize(BufferMaxSize, BufferMaxSize);
 	ClientSocket->SetReceiveBufferSize(BufferMaxSize, BufferMaxSize);
 
-	bIsConnected = ClientSocket->Connect(*RemoteAdress);
+	ClientSocket->Connect(*RemoteAdress);
 
-	if (bIsConnected)
+	if (IsConnected())
 	{
 		OnConnected.Broadcast();
 	}
@@ -129,6 +129,14 @@ bool UTCPClientComponent::Emit(const TArray<uint8>& Bytes)
 		int32 BytesSent = 0;
 		return ClientSocket->Send(Bytes.GetData(), Bytes.Num(), BytesSent);
 	}
+	return false;
+}
+
+bool UTCPClientComponent::IsConnected()
+{
+	if (ClientSocket && (ClientSocket->GetConnectionState() == ESocketConnectionState::SCS_Connected))
+		return true;
+
 	return false;
 }
 
