@@ -16,9 +16,11 @@ UTCPClientComponent::UTCPClientComponent(const FObjectInitializer &init) : UActo
 	bReceiveDataOnGameThread = true;
 	bWantsInitializeComponent = true;
 	bAutoActivate = true;
+	bAutoDisconnectOnSendFailure = true;
+	bAutoReconnectOnSendFailure = true;
 	ConnectionIP = FString(TEXT("127.0.0.1"));
 	ConnectionPort = 3000;
-	ClientSocketName = FString(TEXT("ue4-tcp-client"));
+	ClientSocketName = FString(TEXT("unreal-tcp-client"));
 	ClientSocket = nullptr;
 
 	BufferMaxSize = 2 * 1024 * 1024;	//default roughly 2mb
@@ -26,7 +28,13 @@ UTCPClientComponent::UTCPClientComponent(const FObjectInitializer &init) : UActo
 
 void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("127.0.0.1")*/, const int32 InPort /*= 3000*/)
 {
-	
+	//Already connected? attempt reconnect
+	if (IsConnected())
+	{
+		CloseSocket();
+		ConnectToSocketAsClient(InIP, InPort);
+	}
+
 	ISocketSubsystem* SocketSubsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
 
 	if (SocketSubsystem == nullptr)
@@ -47,16 +55,9 @@ void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("
     }
 
 	RemoteAdress = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateInternetAddr();
-	
-	//bool bIsValid;
+
 	RemoteAdress->SetRawIp(ResolveInfo->GetResolvedAddress().GetRawIp()); // todo: somewhat wasteful, we could probably use the same address object?
 	RemoteAdress->SetPort(InPort);
-
-	/*if (!bIsValid)
-	{
-		UE_LOG(LogTemp, Error, TEXT("TCP address is invalid <%s:%d>"), *InIP, InPort);
-		return ;
-	}*/
 
 	ClientSocket = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateSocket(NAME_Stream, ClientSocketName, false);
 
@@ -64,19 +65,33 @@ void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("
 	ClientSocket->SetSendBufferSize(BufferMaxSize, BufferMaxSize);
 	ClientSocket->SetReceiveBufferSize(BufferMaxSize, BufferMaxSize);
 
-	ClientSocket->Connect(*RemoteAdress);
-
-	if (IsConnected())
-	{
-		OnConnected.Broadcast();
-	}
-	bShouldReceiveData = true;
-
 	//Listen for data on our end
 	ClientConnectionFinishedFuture = FTCPWrapperUtility::RunLambdaOnBackGroundThread([&]()
 	{
+		double LastConnectionCheck = FPlatformTime::Seconds();
+
 		uint32 BufferSize = 0;
 		TArray<uint8> ReceiveBuffer;
+		bShouldAttemptConnection = true;
+
+		while (bShouldAttemptConnection)
+		{
+			if (ClientSocket->Connect(*RemoteAdress))
+			{
+				FTCPWrapperUtility::RunLambdaOnGameThread([&]()
+				{
+					OnConnected.Broadcast();
+				});
+				bShouldAttemptConnection = false;
+				continue;
+			}
+		
+			//reconnect attempt every 3 sec
+			FPlatformProcess::Sleep(3.f);
+		}
+
+		bShouldReceiveData = true;
+
 		while (bShouldReceiveData)
 		{
 			if (ClientSocket->HasPendingData(BufferSize))
@@ -103,8 +118,26 @@ void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("
 					OnReceivedBytes.Broadcast(ReceiveBuffer);
 				}
 			}
-			//sleep until there is data or 10 ticks
-			ClientSocket->Wait(ESocketWaitConditions::WaitForReadOrWrite, FTimespan(1));
+			//sleep until there is data or 10 ticks (0.1micro seconds
+			ClientSocket->Wait(ESocketWaitConditions::WaitForReadOrWrite, FTimespan(10));
+
+			//Check every second if we're still connected
+			//NB: this doesn't really work atm, disconnects are not captured on receive pipe
+			//detectable on send failure though
+			/*double Now = FPlatformTime::Seconds();
+			if (Now > (LastConnectionCheck + 1.0)) 
+			{
+				LastConnectionCheck = Now;
+				if (!IsConnected())
+				{
+					bShouldReceiveData = false;
+					FTCPWrapperUtility::RunLambdaOnGameThread([&]() 
+					{
+						OnDisconnected.Broadcast();
+					});
+					
+				}
+			}*/
 		}
 	});
 }
@@ -119,25 +152,44 @@ void UTCPClientComponent::CloseSocket()
 		ClientSocket->Close();
 		ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(ClientSocket);
 		ClientSocket = nullptr;
+
+		OnDisconnected.Broadcast();
 	}
 }
 
 bool UTCPClientComponent::Emit(const TArray<uint8>& Bytes)
 {
-	if (ClientSocket && ClientSocket->GetConnectionState() == SCS_Connected)
+	if (IsConnected())
 	{
 		int32 BytesSent = 0;
-		return ClientSocket->Send(Bytes.GetData(), Bytes.Num(), BytesSent);
+		bool bDidSend = ClientSocket->Send(Bytes.GetData(), Bytes.Num(), BytesSent);
+		
+
+		//If we're supposedly connected but failed to send
+		if (IsConnected() && !bDidSend)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Sending Failure detected"));
+
+			if (bAutoDisconnectOnSendFailure)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("disconnecting socket."));
+				CloseSocket();
+			}
+
+			if (bAutoReconnectOnSendFailure)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("reconnecting..."));
+				ConnectToSocketAsClient(ConnectionIP, ConnectionPort);
+			}
+		}
+		return bDidSend;
 	}
 	return false;
 }
 
 bool UTCPClientComponent::IsConnected()
 {
-	if (ClientSocket && (ClientSocket->GetConnectionState() == ESocketConnectionState::SCS_Connected))
-		return true;
-
-	return false;
+	return (ClientSocket && (ClientSocket->GetConnectionState() == ESocketConnectionState::SCS_Connected));
 }
 
 void UTCPClientComponent::InitializeComponent()

@@ -7,4 +7,9 @@ public:
 	{
 		return Async(EAsyncExecution::Thread, InFunction);
 	}
+
+	static TFuture<void> RunLambdaOnGameThread(TFunction< void()> InFunction)
+	{
+		return Async(EAsyncExecution::TaskGraphMainThread, InFunction);
+	}
 };

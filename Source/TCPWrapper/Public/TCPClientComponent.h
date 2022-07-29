@@ -19,9 +19,13 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "TCP Events")
 	FTCPMessageSignature OnReceivedBytes;
 
-	/** Callback when we start listening on the TCP receive socket*/
+	/** Callback when we've connected to end point*/
 	UPROPERTY(BlueprintAssignable, Category = "TCP Events")
 	FTCPEventSignature OnConnected;
+
+	/** Callback when we've disconnected from end point only captured on send failure */
+	UPROPERTY(BlueprintAssignable, Category = "TCP Events")
+	FTCPEventSignature OnDisconnected;
 
 	/** Default sending socket IP string in form e.g. 127.0.0.1. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
@@ -44,6 +48,14 @@ public:
 	/** Whether we should process our data on the game thread or the TCP thread. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
 	bool bReceiveDataOnGameThread;
+
+	/** When a send failure occurs, should we automatically try to disconnect? */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
+	bool bAutoDisconnectOnSendFailure;
+
+	/** When a send failure occurs, should we automatically try to reconnect after disconnection? */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TCP Connection Properties")
+	bool bAutoReconnectOnSendFailure;
 
 
 	/**
@@ -82,6 +94,7 @@ public:
 protected:
 	FSocket* ClientSocket;
 	FThreadSafeBool bShouldReceiveData;
+	FThreadSafeBool bShouldAttemptConnection;
 	TFuture<void> ClientConnectionFinishedFuture;
 
 	//FTCPSocketReceiver* TCPReceiver;
