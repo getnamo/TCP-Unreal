@@ -83,7 +83,13 @@ void UTCPServerComponent::StartListenServer(const int32 InListenPort)
 				TSharedPtr<FTCPClient> Client = ClientPair.Value;
 
 				//Did we disconnect? Note that this almost never changed from connected due to engine bug, instead it will be caught when trying to send data
-				ESocketConnectionState ConnectionState = Client->Socket->GetConnectionState();
+				
+				ESocketConnectionState ConnectionState = ESocketConnectionState::SCS_NotConnected;
+
+				if (Client->Socket != nullptr) {
+					ConnectionState = Client->Socket->GetConnectionState();
+				}
+
 				if (ConnectionState != ESocketConnectionState::SCS_Connected)
 				{
 					ClientsDisconnected.Add(Client);
