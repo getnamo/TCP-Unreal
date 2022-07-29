@@ -71,7 +71,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "TCP Functions")
 	bool Emit(const TArray<uint8>& Bytes);
 	
-	UFUNCTION(BlueprintCallable, Category = "TCP Functions")
+	UFUNCTION(BlueprintPure, Category = "TCP Functions")
 	bool IsConnected();
 
 	virtual void InitializeComponent() override;
