@@ -4,6 +4,7 @@
 #include "TCPWrapperUtility.h"
 #include "SocketSubsystem.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "IPAddressAsyncResolve.h"
 
 TFuture<void> RunLambdaOnBackGroundThread(TFunction< void()> InFunction)
 {
