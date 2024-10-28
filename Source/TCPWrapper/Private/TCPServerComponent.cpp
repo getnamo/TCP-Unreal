@@ -161,19 +161,6 @@ void UTCPServerComponent::StartListenServer(const int32 InListenPort)
 			//sleep for 100microns
 			FPlatformProcess::Sleep(0.0001);
 		}//end while
-
-		for (auto ClientPair : Clients)
-		{
-			ClientPair.Value->Socket->Close();
-		}
-		Clients.Empty();
-
-		//Server ended
-		AsyncTask(ENamedThreads::GameThread, [&]()
-		{
-			Clients.Empty();
-			OnListenEnd.Broadcast();
-		});
 	});
 }
 
@@ -188,6 +175,12 @@ void UTCPServerComponent::StopListenServer()
 		ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(ListenSocket);
 		ListenSocket = nullptr;
 
+		for (auto ClientPair : Clients)
+		{
+			ClientPair.Value->Socket->Close();
+		}
+		Clients.Empty();
+		
 		OnListenEnd.Broadcast();
 	}
 }
