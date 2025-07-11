@@ -93,7 +93,7 @@ void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("
 
 		bShouldReceiveData = true;
 
-		while (bShouldReceiveData)
+		while (IsConnected() && bShouldReceiveData)
 		{
 			if (ClientSocket->HasPendingData(BufferSize))
 			{
@@ -148,7 +148,12 @@ void UTCPClientComponent::CloseSocket()
 	if (ClientSocket)
 	{
 		bShouldReceiveData = false;
-		ClientConnectionFinishedFuture.Get();
+		bShouldAttemptConnection = false;
+		
+		if (ClientConnectionFinishedFuture.IsValid())
+		{
+			auto Status = ClientConnectionFinishedFuture.WaitFor(FTimespan::FromSeconds(3.f));
+		}
 
 		ClientSocket->Close();
 		ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(ClientSocket);
