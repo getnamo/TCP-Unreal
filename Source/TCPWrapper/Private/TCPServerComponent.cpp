@@ -44,8 +44,11 @@ void UTCPServerComponent::StartListenServer(const int32 InListenPort)
 	OnListenBegin.Broadcast();
 	bShouldListen = true;
 
+	//Game thread callbacks may run after this component is destroyed, guard them with a weak ptr
+	TWeakObjectPtr<UTCPServerComponent> WeakThis = this;
+
 	//Start a lambda thread to handle data
-	ServerFinishedFuture = FTCPWrapperUtility::RunLambdaOnBackGroundThread([&]()
+	ServerFinishedFuture = FTCPWrapperUtility::RunLambdaOnBackGroundThread([&, WeakThis]()
 	{
 		uint32 BufferSize = 0;
 		TArray<uint8> ReceiveBuffer;
@@ -63,25 +66,39 @@ void UTCPServerComponent::StartListenServer(const int32 InListenPort)
 				TSharedPtr<FInternetAddr> Addr = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateInternetAddr();
 				FSocket* Client = ListenSocket->Accept(*Addr,TEXT("tcp-client"));
 
-				const FString AddressString = Addr->ToString(true);
-
-				TSharedPtr<FTCPClient> ClientItem = MakeShareable(new FTCPClient());
-				ClientItem->Address = AddressString;
-				ClientItem->Socket = Client;
-
-				Clients.Add(AddressString, ClientItem);	//todo: balance this with remove when clients disconnect
-
-				AsyncTask(ENamedThreads::GameThread, [&, AddressString]()
+				if (Client != nullptr)
 				{
-					OnClientConnected.Broadcast(AddressString);
-				});
+					const FString AddressString = Addr->ToString(true);
+
+					TSharedPtr<FTCPClient> ClientItem = MakeShareable(new FTCPClient());
+					ClientItem->Address = AddressString;
+					ClientItem->Socket = Client;
+
+					{
+						FScopeLock Lock(&ClientsLock);
+						Clients.Add(AddressString, ClientItem);
+					}
+
+					AsyncTask(ENamedThreads::GameThread, [WeakThis, AddressString]()
+					{
+						if (WeakThis.IsValid())
+						{
+							WeakThis->OnClientConnected.Broadcast(AddressString);
+						}
+					});
+				}
+			}
+
+			//Iterate a snapshot so game thread emits/disconnects can't modify the map under us
+			TArray<TSharedPtr<FTCPClient>> ClientsSnapshot;
+			{
+				FScopeLock Lock(&ClientsLock);
+				Clients.GenerateValueArray(ClientsSnapshot);
 			}
 
 			//Check each endpoint for data
-			for (auto ClientPair : Clients)
+			for (TSharedPtr<FTCPClient>& Client : ClientsSnapshot)
 			{
-				TSharedPtr<FTCPClient> Client = ClientPair.Value;
-
 				//Did we disconnect? Note that this almost never changed from connected due to engine bug, instead it will be caught when trying to send data
 				
 				ESocketConnectionState ConnectionState = ESocketConnectionState::SCS_NotConnected;
@@ -110,9 +127,12 @@ void UTCPServerComponent::StartListenServer(const int32 InListenPort)
 						ReceiveBufferGT.Append(ReceiveBuffer);
 
 						//Pass the reference to be used on gamethread
-						AsyncTask(ENamedThreads::GameThread, [&, ReceiveBufferGT]()
+						AsyncTask(ENamedThreads::GameThread, [WeakThis, ReceiveBufferGT]()
 						{
-							OnReceivedBytes.Broadcast(ReceiveBufferGT);
+							if (WeakThis.IsValid())
+							{
+								WeakThis->OnReceivedBytes.Broadcast(ReceiveBufferGT);
+							}
 						});
 					}
 					else
@@ -149,10 +169,24 @@ void UTCPServerComponent::StartListenServer(const int32 InListenPort)
 				for (TSharedPtr<FTCPClient> ClientToRemove : ClientsDisconnected)
 				{
 					const FString Address = ClientToRemove->Address;
-					Clients.Remove(Address);
-					AsyncTask(ENamedThreads::GameThread, [this, Address]()
+					int32 NumRemoved = 0;
 					{
-						OnClientDisconnected.Broadcast(Address);
+						FScopeLock Lock(&ClientsLock);
+						NumRemoved = Clients.Remove(Address);
+					}
+
+					//Already removed via DisconnectClient, which broadcast for it
+					if (NumRemoved == 0)
+					{
+						continue;
+					}
+
+					AsyncTask(ENamedThreads::GameThread, [WeakThis, Address]()
+					{
+						if (WeakThis.IsValid())
+						{
+							WeakThis->OnClientDisconnected.Broadcast(Address);
+						}
 					});
 				}
 				ClientsDisconnected.Empty();
@@ -175,88 +209,98 @@ void UTCPServerComponent::StopListenServer()
 		ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(ListenSocket);
 		ListenSocket = nullptr;
 
-		for (auto ClientPair : Clients)
 		{
-			ClientPair.Value->Socket->Close();
+			FScopeLock Lock(&ClientsLock);
+			for (auto ClientPair : Clients)
+			{
+				ClientPair.Value->Socket->Close();
+			}
+			Clients.Empty();
 		}
-		Clients.Empty();
-		
+
 		OnListenEnd.Broadcast();
 	}
 }
 
 bool  UTCPServerComponent::Emit(const TArray<uint8>& Bytes, const FString& ToClient)
 {
-	if (Clients.Num()>0)
+	TArray<TSharedPtr<FTCPClient>> TargetClients;
 	{
-		int32 BytesSent = 0;
+		FScopeLock Lock(&ClientsLock);
+
 		//simple multi-cast
 		if (ToClient == TEXT("All"))
 		{
-			//Success is all of the messages emitted successfully
-			bool Success = true;
-			TArray<TSharedPtr<FTCPClient>> AllClients;
-
-			Clients.GenerateValueArray(AllClients);
-			for (TSharedPtr<FTCPClient>& Client : AllClients)
-			{
-				if (Client.IsValid())
-				{
-					bool Sent = Client->Socket->Send(Bytes.GetData(), Bytes.Num(), BytesSent);
-					if (!Sent && bDisconnectOnFailedEmit)
-					{
-						Client->Socket->Close();
-					}
-					Success = Sent && Success;
-				}
-			}
-			return Success;
+			Clients.GenerateValueArray(TargetClients);
 		}
 		//match client address and port
-		else
+		else if (TSharedPtr<FTCPClient>* Client = Clients.Find(ToClient))
 		{
-			TSharedPtr<FTCPClient> Client = Clients[ToClient];
-
-			if (Client.IsValid())
-			{
-				bool Sent = Client->Socket->Send(Bytes.GetData(), Bytes.Num(), BytesSent);
-				if (!Sent && bDisconnectOnFailedEmit)
-				{
-					Client->Socket->Close();
-				}
-				return Sent;
-			}
+			TargetClients.Add(*Client);
 		}
 	}
-	return false;
+
+	if (TargetClients.Num() == 0)
+	{
+		return false;
+	}
+
+	//Success is all of the messages emitted successfully
+	bool Success = true;
+	for (TSharedPtr<FTCPClient>& Client : TargetClients)
+	{
+		if (Client.IsValid() && Client->Socket)
+		{
+			int32 BytesSent = 0;
+			bool Sent = Client->Socket->Send(Bytes.GetData(), Bytes.Num(), BytesSent);
+			if (!Sent && bDisconnectOnFailedEmit)
+			{
+				Client->Socket->Close();
+			}
+			Success = Sent && Success;
+		}
+	}
+	return Success;
 }
 
 void UTCPServerComponent::DisconnectClient(FString ClientAddress /*= TEXT("All")*/, bool bDisconnectNextTick/*=false*/)
 {
-	TFunction<void()> DisconnectFunction = [this, ClientAddress]
+	TWeakObjectPtr<UTCPServerComponent> WeakThis = this;
+
+	TFunction<void()> DisconnectFunction = [WeakThis, ClientAddress]
 	{
-		bool bDisconnectAll = ClientAddress == TEXT("All");
-
-		if (!bDisconnectAll)
+		if (!WeakThis.IsValid())
 		{
-			TSharedPtr<FTCPClient> Client = Clients[ClientAddress];
+			return;
+		}
 
-			if (Client.IsValid())
+		TArray<TSharedPtr<FTCPClient>> ClientsToRemove;
+		{
+			FScopeLock Lock(&WeakThis->ClientsLock);
+
+			if (ClientAddress == TEXT("All"))
 			{
-				Client->Socket->Close();
-				Clients.Remove(Client->Address);
-				OnClientDisconnected.Broadcast(ClientAddress);
+				WeakThis->Clients.GenerateValueArray(ClientsToRemove);
+				WeakThis->Clients.Empty();
+			}
+			else
+			{
+				TSharedPtr<FTCPClient> Client;
+				if (WeakThis->Clients.RemoveAndCopyValue(ClientAddress, Client))
+				{
+					ClientsToRemove.Add(Client);
+				}
 			}
 		}
-		else
+
+		//Broadcast outside the lock so listeners can safely call back into the component
+		for (TSharedPtr<FTCPClient>& Client : ClientsToRemove)
 		{
-			for (auto ClientPair : Clients)
+			if (Client->Socket)
 			{
-				TSharedPtr<FTCPClient> Client = ClientPair.Value;
 				Client->Socket->Close();
-				Clients.Remove(Client->Address);
-				OnClientDisconnected.Broadcast(ClientAddress);
 			}
+			WeakThis->OnClientDisconnected.Broadcast(Client->Address);
 		}
 	};
 

@@ -66,8 +66,11 @@ void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("
 	ClientSocket->SetSendBufferSize(BufferMaxSize, BufferMaxSize);
 	ClientSocket->SetReceiveBufferSize(BufferMaxSize, BufferMaxSize);
 
+	//Game thread callbacks may run after this component is destroyed, guard them with a weak ptr
+	TWeakObjectPtr<UTCPClientComponent> WeakThis = this;
+
 	//Listen for data on our end
-	ClientConnectionFinishedFuture = FTCPWrapperUtility::RunLambdaOnBackGroundThread([&]()
+	ClientConnectionFinishedFuture = FTCPWrapperUtility::RunLambdaOnBackGroundThread([&, WeakThis]()
 	{
 		double LastConnectionCheck = FPlatformTime::Seconds();
 
@@ -79,9 +82,12 @@ void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("
 		{
 			if (ClientSocket->Connect(*RemoteAdress))
 			{
-				FTCPWrapperUtility::RunLambdaOnGameThread([&]()
+				FTCPWrapperUtility::RunLambdaOnGameThread([WeakThis]()
 				{
-					OnConnected.Broadcast();
+					if (WeakThis.IsValid())
+					{
+						WeakThis->OnConnected.Broadcast();
+					}
 				});
 				bShouldAttemptConnection = false;
 				continue;
@@ -109,9 +115,12 @@ void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("
 					ReceiveBufferGT.Append(ReceiveBuffer);
 
 					//Pass the reference to be used on game thread
-					AsyncTask(ENamedThreads::GameThread, [&, ReceiveBufferGT]()
+					AsyncTask(ENamedThreads::GameThread, [WeakThis, ReceiveBufferGT]()
 					{
-						OnReceivedBytes.Broadcast(ReceiveBufferGT);
+						if (WeakThis.IsValid())
+						{
+							WeakThis->OnReceivedBytes.Broadcast(ReceiveBufferGT);
+						}
 					});
 				}
 				else

@@ -121,6 +121,8 @@ public:
 	
 protected:
 	TMap<FString, TSharedPtr<FTCPClient>> Clients;
+	/** Clients is accessed from both the server thread and the game thread */
+	FCriticalSection ClientsLock;
 	FSocket* ListenSocket;
 	FThreadSafeBool bShouldListen;
 	TFuture<void> ServerFinishedFuture;
