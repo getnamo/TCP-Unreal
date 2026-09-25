@@ -159,7 +159,7 @@ void UTCPServerComponent::StartListenServer(const int32 InListenPort)
 			}
 
 			//sleep for 100microns
-			FPlatformProcess::Sleep(0.0001);
+			FPlatformProcess::Sleep(0.0001f);
 		}//end while
 	});
 }
